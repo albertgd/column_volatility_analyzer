@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Column Volatility Analyzer · Snowflake &amp; Databricks</title>
+  <meta name="description" content="Paste a DDL and instantly generate a Snowflake or Databricks SQL query that measures the rate of change per column." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & tokens ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0f1a;
+      --surface:   #13162a;
+      --surface2:  #1a1f38;
+      --border:    rgba(255,255,255,0.07);
+      --accent:    #6c63ff;
+      --accent2:   #a78bfa;
+      --green:     #34d399;
+      --amber:     #fbbf24;
+      --red:       #f87171;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --radius:    14px;
+      --mono:      'JetBrains Mono', monospace;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      padding: 28px 40px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(90deg, #0d0f1a 60%, #14103a 100%);
+    }
+    .logo {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; flex-shrink: 0;
+      box-shadow: 0 0 20px rgba(108,99,255,0.4);
+    }
+    header h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p  { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+    .badge {
+      margin-left: auto;
+      background: rgba(108,99,255,0.18);
+      border: 1px solid rgba(108,99,255,0.35);
+      color: var(--accent2);
+      font-size: 0.72rem; font-weight: 600;
+      padding: 4px 12px; border-radius: 99px;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      padding: 32px 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .panel-left  { border-right: 1px solid var(--border); }
+
+    /* ── Section titles ─────────────────────────────────────────────────── */
+    .section-title {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    /* ── Textarea / DDL input ───────────────────────────────────────────── */
+    label.field-label {
+      font-size: 0.82rem; font-weight: 500; color: var(--text);
+      margin-bottom: 6px; display: block;
+    }
+    textarea#ddl-input {
+      width: 100%; height: 280px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.6;
+      padding: 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color .2s;
+    }
+    textarea#ddl-input:focus { border-color: var(--accent); }
+    textarea#ddl-input::placeholder { color: var(--muted); }
+
+    /* ── Dialect selector ───────────────────────────────────────────────── */
+    .dialect-row {
+      display: flex; gap: 10px;
+    }
+    .dialect-btn {
+      flex: 1; padding: 10px 0;
+      border-radius: 10px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--muted);
+      font-family: 'Inter', sans-serif; font-size: 0.82rem; font-weight: 500;
+      cursor: pointer; transition: all .2s;
+    }
+    .dialect-btn.active {
+      background: rgba(108,99,255,0.18);
+      border-color: var(--accent);
+      color: var(--accent2);
+    }
+    .dialect-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+    /* ── Analyze button ─────────────────────────────────────────────────── */
+    #analyze-btn {
+      width: 100%; padding: 14px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border: none; border-radius: var(--radius);
+      color: #fff; font-family: 'Inter', sans-serif;
+      font-size: 0.95rem; font-weight: 600;
+      cursor: pointer; letter-spacing: -0.01em;
+      transition: opacity .2s, transform .15s, box-shadow .2s;
+      box-shadow: 0 4px 24px rgba(108,99,255,0.35);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    #analyze-btn:hover  { opacity: .9; transform: translateY(-1px); box-shadow: 0 6px 30px rgba(108,99,255,0.5); }
+    #analyze-btn:active { transform: translateY(0); }
+    #analyze-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+    /* spinner */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #analyze-btn.loading .spinner { display: block; }
+    #analyze-btn.loading .btn-text { display: none; }
+
+    /* ── Rules callout ──────────────────────────────────────────────────── */
+    .rules-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+    }
+    .rules-box h3 {
+      font-size: 0.82rem; font-weight: 600; margin-bottom: 12px;
+      color: var(--accent2);
+    }
+    .rule-item {
+      display: flex; gap: 12px; align-items: flex-start;
+      margin-bottom: 10px; font-size: 0.8rem; line-height: 1.55;
+    }
+    .rule-item:last-child { margin-bottom: 0; }
+    .rule-num {
+      flex-shrink: 0;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(108,99,255,0.2); border: 1px solid rgba(108,99,255,0.4);
+      color: var(--accent2); font-size: 0.68rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .rule-text { color: var(--muted); }
+    .rule-text code {
+      font-family: var(--mono); font-size: 0.75rem;
+      background: rgba(255,255,255,0.07); padding: 1px 6px;
+      border-radius: 4px; color: var(--accent2);
+    }
+
+    /* ── Right panel results ────────────────────────────────────────────── */
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; color: var(--muted); text-align: center;
+    }
+    .empty-icon { font-size: 48px; opacity: .35; }
+    .empty-state p { font-size: 0.85rem; max-width: 280px; line-height: 1.6; }
+
+    /* ── Error card ─────────────────────────────────────────────────────── */
+    .error-card {
+      background: rgba(248,113,113,0.08);
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      font-size: 0.82rem; color: var(--red);
+      display: none;
+    }
+
+    /* ── Column cards grid ──────────────────────────────────────────────── */
+    .columns-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+    .col-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 16px;
+      transition: border-color .2s;
+    }
+    .col-card:hover { border-color: rgba(108,99,255,0.4); }
+    .col-card.pk-card {
+      border-color: rgba(167,139,250,0.35);
+      background: rgba(108,99,255,0.08);
+    }
+    .col-name {
+      font-family: var(--mono); font-size: 0.78rem; font-weight: 500;
+      color: var(--text); margin-bottom: 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .col-type { font-size: 0.7rem; color: var(--muted); margin-bottom: 8px; }
+    .pk-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: rgba(167,139,250,0.15); border: 1px solid rgba(167,139,250,0.3);
+      color: var(--accent2); font-size: 0.65rem; font-weight: 600;
+      padding: 2px 8px; border-radius: 99px;
+    }
+    .measure-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.25);
+      color: var(--green); font-size: 0.65rem; font-weight: 600;
+      padding: 2px 8px; border-radius: 99px;
+    }
+
+    /* ── SQL block ──────────────────────────────────────────────────────── */
+    .sql-wrapper {
+      position: relative;
+    }
+    .sql-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .copy-btn {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: 0.75rem; font-weight: 500; padding: 6px 14px;
+      border-radius: 8px; cursor: pointer; transition: all .2s;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent2); }
+    .copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+    pre#sql-output {
+      background: #0a0c18;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      font-family: var(--mono); font-size: 0.76rem;
+      line-height: 1.7; color: #c9d1d9;
+      overflow-x: auto; white-space: pre;
+      max-height: 420px; overflow-y: auto;
+    }
+
+    /* SQL syntax colouring */
+    .kw  { color: #ff79c6; font-weight: 600; }
+    .fn  { color: #50fa7b; }
+    .cm  { color: #6272a4; font-style: italic; }
+    .al  { color: #f1fa8c; }
+    .tbl { color: #8be9fd; }
+
+    /* ── Summary strip ──────────────────────────────────────────────────── */
+    .summary-strip {
+      display: flex; gap: 10px; flex-wrap: wrap;
+    }
+    .stat-pill {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 16px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .stat-pill .val {
+      font-size: 1.3rem; font-weight: 700; color: var(--accent2);
+    }
+    .stat-pill .lbl {
+      font-size: 0.68rem; color: var(--muted); font-weight: 500; text-transform: uppercase;
+    }
+
+    /* ── Results panel visibility ───────────────────────────────────────── */
+    #results-panel { display: flex; flex-direction: column; gap: 0; }
+    .results-content { display: none; flex-direction: column; gap: 20px; }
+    .results-content.visible { display: flex; }
+
+    /* ── Scrollbar styling ──────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+    /* ── Footer ─────────────────────────────────────────────────────────── */
+    footer {
+      text-align: center; padding: 14px;
+      font-size: 0.72rem; color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">⚡</div>
+  <div>
+    <h1>Column Volatility Analyzer</h1>
+    <p>Measure how often each column changes across record versions</p>
+  </div>
+  <span class="badge">❄️ Snowflake · 🧱 Databricks SQL</span>
+</header>
+
+<!-- ── Main ────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- LEFT PANEL: Input -->
+  <section class="panel panel-left">
+
+    <div class="section-title">1 · Input</div>
+
+    <div>
+      <label class="field-label" for="ddl-input">Paste your CREATE TABLE DDL</label>
+      <textarea id="ddl-input" spellcheck="false" placeholder="CREATE TABLE my_dataset.patient_records (
+  patient_PK      STRING NOT NULL,
+  visit_date      DATE,
+  diagnosis_code  STRING,
+  weight_kg       FLOAT64,
+  updated_at      TIMESTAMP
+);"></textarea>
+    </div>
+
+    <div>
+      <label class="field-label">SQL Dialect</label>
+      <div class="dialect-row">
+        <button class="dialect-btn active" id="btn-snowflake" onclick="setDialect('snowflake')">❄️ Snowflake <small>(DIV0NULL)</small></button>
+        <button class="dialect-btn" id="btn-databricks" onclick="setDialect('databricks')">🧱 Databricks SQL <small>(TRY_DIVIDE)</small></button>
+      </div>
+    </div>
+
+    <button id="analyze-btn" onclick="analyze()">
+      <div class="spinner"></div>
+      <span class="btn-text">⚡ Generate Volatility SQL</span>
+    </button>
+
+    <!-- Rules box -->
+    <div class="rules-box">
+      <h3>🔍 Primary Key Detection Rules</h3>
+      <div class="rule-item">
+        <div class="rule-num">1</div>
+        <div class="rule-text"><strong>Explicit PK suffix</strong> — Any column whose name ends with <code>_PK</code> (case-insensitive) is treated as part of the primary key. E.g. <code>patient_PK</code>, <code>ORDER_PK</code>.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-num">2</div>
+        <div class="rule-text"><strong>DDL constraint</strong> — Columns declared with <code>PRIMARY KEY</code> inline or via a table-level <code>PRIMARY KEY (…)</code> clause.</div>
+      </div>
+      <div class="rule-item">
+        <div class="rule-num">3</div>
+        <div class="rule-text"><strong>Surrogate key pattern</strong> — Columns named exactly <code>id</code> or ending in <code>_id</code> are treated as surrogate keys. E.g. <code>user_id</code>, <code>order_id</code>.</div>
+      </div>
+      <div class="rule-item" style="margin-top:6px; padding-top:10px; border-top:1px solid var(--border);">
+        <div class="rule-num" style="background:rgba(251,191,36,0.15);border-color:rgba(251,191,36,0.35);color:var(--amber);">!</div>
+        <div class="rule-text"><strong>Volatility score</strong>: <code>(unique values − 1) / (total versions − 1)</code>. A score of <strong>0</strong> means the column never changes; <strong>1</strong> means it changes on every single version update.</div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- RIGHT PANEL: Results -->
+  <section class="panel" id="results-panel">
+
+    <!-- Empty state -->
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">📊</div>
+      <p>Paste a DDL on the left and click <strong>Generate Volatility SQL</strong> to see the analysis and generated query.</p>
+    </div>
+
+    <!-- Error -->
+    <div class="error-card" id="error-card"></div>
+
+    <!-- Results -->
+    <div class="results-content" id="results-content">
+
+      <div class="section-title">2 · Schema Analysis</div>
+
+      <!-- Summary pills -->
+      <div class="summary-strip" id="summary-strip"></div>
+
+      <!-- Column cards -->
+      <div class="columns-grid" id="columns-grid"></div>
+
+      <div class="section-title">3 · Generated SQL</div>
+
+      <!-- SQL block -->
+      <div class="sql-wrapper">
+        <div class="sql-header">
+          <span style="font-size:0.75rem;color:var(--muted);" id="sql-dialect-label"></span>
+          <button class="copy-btn" id="copy-btn" onclick="copySQL()">
+            <span id="copy-icon">⎘</span> <span id="copy-text">Copy SQL</span>
+          </button>
+        </div>
+        <pre id="sql-output"></pre>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<footer>Column Volatility Analyzer · Boehringer Ingelheim Data Engineering</footer>
+
+<script>
+  let currentDialect = 'snowflake';
+  let rawSQL = '';
+
+  function setDialect(d) {
+    currentDialect = d;
+    document.getElementById('btn-snowflake').classList.toggle('active', d === 'snowflake');
+    document.getElementById('btn-databricks').classList.toggle('active', d === 'databricks');
+  }
+
+  async function analyze() {
+    const ddl = document.getElementById('ddl-input').value.trim();
+    if (!ddl) return;
+
+    const btn = document.getElementById('analyze-btn');
+    btn.classList.add('loading');
+    btn.disabled = true;
+
+    hideError();
+    hideResults();
+    document.getElementById('empty-state').style.display = 'none';
+
+    try {
+      const res = await fetch('/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ddl, dialect: currentDialect })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'Unknown error');
+        return;
+      }
+
+      renderResults(data);
+
+    } catch (e) {
+      showError('Network error: ' + e.message);
+    } finally {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
+  }
+
+  function renderResults(data) {
+    const { parsed, sql } = data;
+    rawSQL = sql;
+
+    // ── Summary pills ────────────────────────────────────────────────────
+    const strip = document.getElementById('summary-strip');
+    strip.innerHTML = `
+      <div class="stat-pill">
+        <div class="val">${parsed.columns.length}</div>
+        <div class="lbl">Total Columns</div>
+      </div>
+      <div class="stat-pill">
+        <div class="val" style="color:var(--accent2)">${parsed.pk_columns.length}</div>
+        <div class="lbl">PK Columns</div>
+      </div>
+      <div class="stat-pill">
+        <div class="val" style="color:var(--green)">${parsed.measure_columns.length}</div>
+        <div class="lbl">Measured Columns</div>
+      </div>
+      <div class="stat-pill">
+        <div class="val" style="color:var(--amber)">${esc(parsed.table_name)}</div>
+        <div class="lbl">Table</div>
+      </div>`;
+
+    // ── Column cards ─────────────────────────────────────────────────────
+    const grid = document.getElementById('columns-grid');
+    grid.innerHTML = parsed.columns.map(col => {
+      const isPk = col.is_pk;
+      return `<div class="col-card ${isPk ? 'pk-card' : ''}">
+        <div class="col-name" title="${esc(col.name)}">${esc(col.name)}</div>
+        <div class="col-type">${esc(col.dtype)}</div>
+        ${isPk
+          ? `<span class="pk-chip">🔑 PK · ${esc(col.pk_reason)}</span>`
+          : `<span class="measure-chip">📈 Measured</span>`
+        }
+      </div>`;
+    }).join('');
+
+    // ── SQL highlight ────────────────────────────────────────────────────
+    document.getElementById('sql-dialect-label').textContent =
+      currentDialect === 'snowflake' ? '❄️ Snowflake · DIV0NULL' : '🧱 Databricks SQL · TRY_DIVIDE';
+    document.getElementById('sql-output').innerHTML = highlightSQL(sql);
+
+    document.getElementById('results-content').classList.add('visible');
+  }
+
+  function highlightSQL(sql) {
+    const esc2 = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    let s = esc2(sql);
+    // comments
+    s = s.replace(/(--[^\n]*)/g, '<span class="cm">$1</span>');
+    // keywords
+    const kws = ['WITH','SELECT','FROM','WHERE','GROUP\\s+BY','AS','AND','OR','NOT','DISTINCT','AVG','COUNT','NULLIF','SAFE_DIVIDE','NULL'];
+    kws.forEach(k => {
+      s = s.replace(new RegExp(`\\b(${k})\\b`, 'gi'), '<span class="kw">$1</span>');
+    });
+    // aliases (after AS keyword already wrapped)
+    s = s.replace(/(\bAS\b\s+)(\w+)/gi, '$1<span class="al">$2</span>');
+    return s;
+  }
+
+  function copySQL() {
+    if (!rawSQL) return;
+    navigator.clipboard.writeText(rawSQL).then(() => {
+      const btn = document.getElementById('copy-btn');
+      document.getElementById('copy-text').textContent = 'Copied!';
+      document.getElementById('copy-icon').textContent = '✓';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        document.getElementById('copy-text').textContent = 'Copy SQL';
+        document.getElementById('copy-icon').textContent = '⎘';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-card');
+    el.textContent = '⚠ ' + msg;
+    el.style.display = 'block';
+    document.getElementById('empty-state').style.display = 'none';
+  }
+  function hideError() { document.getElementById('error-card').style.display = 'none'; }
+  function hideResults() { document.getElementById('results-content').classList.remove('visible'); }
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // Allow Ctrl/Cmd+Enter to trigger analysis
+  document.getElementById('ddl-input').addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') analyze();
+  });
+</script>
+</body>
+</html>
