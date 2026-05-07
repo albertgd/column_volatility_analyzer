@@ -1,108 +1,101 @@
 # ⚡ Column Volatility Analyzer
 
-Paste any `CREATE TABLE` DDL → instantly get a **BigQuery / Standard SQL** query that measures how often each column changes across record versions.
+A premium web-based utility designed to analyze database schemas (DDL) and generate SQL queries that measure the **rate of change** (volatility) for every column in a table.
 
-## Quick Start
+This tool is specifically built for data engineers working with **staged tables** or **versioned records**, where understanding how often specific attributes change is critical for data modeling and observability.
 
+---
+
+## 🚀 Quick Start
+
+### 1. Setup Environment
 ```bash
-# 1. Create and activate virtual environment
+# Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 2. Install dependencies
-pip install flask
+# Install dependencies
+pip install -r requirements.txt
+```
 
-# 3. Run the app
+### 2. Run the Application
+```bash
 python app.py
-# → Open http://127.0.0.1:5050
+# → The app will be available at http://127.0.0.1:5050
 ```
-
-## How It Works
-
-### Volatility Score
-```
-score = AVG( (unique_values_per_PK - 1) / (total_versions_per_PK - 1) )
-```
-| Score | Meaning | Category |
-|-------|---------|----------|
-| `0.0` | Column **never changes** | 🟩 Stable |
-| `0.5` | Column changes **often** | 🟨 Volatile |
-| `1.0` | Column **changes always** | 🟥 Dynamic |
-
-Records with only 1 version are excluded (division by zero).
 
 ---
 
-## Primary Key Detection Rules
+## 📊 How It Works
 
-Applied in priority order — first match wins:
+### The Volatility Score
+The generated SQL calculates a score for each column based on the unique values relative to the total number of record versions for a given Primary Key.
 
-| Priority | Rule | Example |
-|----------|------|---------|
-| **1** | Column name ends with `_PK` (case-insensitive) | `patient_PK`, `ORDER_PK` |
-| **2** | `PRIMARY KEY` declared inline or as table constraint | `id INT PRIMARY KEY` |
-| **3** | Column named `id` or ending in `_id` | `user_id`, `order_id` |
+$$score = \text{AVG}\left( \frac{\text{unique\_values\_per\_PK} - 1}{\text{total\_versions\_per\_PK} - 1} \right)$$
 
----
+| Score | Category | Meaning |
+|:---:|:---:|:--- |
+| `0.00` | 🟩 **Stable** | Column never changes across versions (e.g., birth_date). |
+| `0.01 - 0.79` | 🟨 **Volatile** | Column changes occasionally (e.g., weight_kg, status). |
+| `1.00` | 🟥 **Dynamic** | Column changes on every single version (e.g., updated_at). |
 
-## SQL Dialects
-
-| Dialect | Division function |
-|---------|-------------------|
-| **BigQuery** | `SAFE_DIVIDE(a, b)` — returns NULL instead of error |
-| **Standard SQL** | `(a) / NULLIF(b, 0)` — ANSI compatible |
+*Note: Records with only 1 version are automatically excluded to avoid division by zero.*
 
 ---
 
-## Example Input / Output
+## 🔍 Primary Key Detection
+
+The analyzer automatically identifies Primary Keys from your DDL using a prioritized rule system:
+
+1.  **Explicit PK Suffix**: Any column ending with `_PK` (e.g., `patient_PK`).
+2.  **DDL Constraints**: Columns marked as `PRIMARY KEY` (inline or table-level).
+3.  **Surrogate Patterns**: Columns named exactly `id` or ending with `_id` (e.g., `user_id`).
+
+---
+
+## 🛠 Supported SQL Dialects
+
+The tool generates safe SQL using dialect-specific functions to handle potential division-by-zero errors.
+
+| Dialect | Division Function | Targeted Platform |
+|:--- |:--- |:--- |
+| **Snowflake** | `DIV0NULL(a, b)` | Snowflake Data Cloud |
+| **Databricks** | `TRY_DIVIDE(a, b)` | Databricks / Spark SQL |
+
+---
+
+## 💻 Tech Stack
+
+- **Backend**: Python 3.11+ / Flask
+- **Frontend**: HTML5 & Vanilla CSS (Modern Dark Mode with Glassmorphism)
+- **Typography**: Inter & JetBrains Mono (via Google Fonts)
+- **Regex**: Robust DDL parsing engine
+
+---
+
+## 📖 Example
 
 **Input DDL:**
 ```sql
-CREATE TABLE my_dataset.patient_records (
+CREATE TABLE clinical_trials.patient_vitals (
   patient_PK     STRING NOT NULL,
-  visit_date     DATE,
-  diagnosis_code STRING,
-  weight_kg      FLOAT64,
-  updated_at     TIMESTAMP
+  reading_time   TIMESTAMP,
+  heart_rate     INT,
+  systolic_bp    INT,
+  diastolic_bp   INT,
+  ingestion_id   STRING
 );
 ```
 
-**Generated SQL:**
-```sql
-WITH PK_Stats AS (
-    SELECT
-        patient_PK,
-        COUNT(*)                       AS total_versions,
-        COUNT(DISTINCT visit_date)     AS unique_1,
-        COUNT(DISTINCT diagnosis_code) AS unique_2,
-        COUNT(DISTINCT weight_kg)      AS unique_3,
-        COUNT(DISTINCT updated_at)     AS unique_4
-    FROM patient_records
-    GROUP BY patient_PK
-),
-ColumnVolatility AS (
-    SELECT
-        AVG(SAFE_DIVIDE(unique_1 - 1, total_versions - 1)) AS vol_score_visit_date,
-        AVG(SAFE_DIVIDE(unique_2 - 1, total_versions - 1)) AS vol_score_diagnosis_code,
-        AVG(SAFE_DIVIDE(unique_3 - 1, total_versions - 1)) AS vol_score_weight_kg,
-        AVG(SAFE_DIVIDE(unique_4 - 1, total_versions - 1)) AS vol_score_updated_at
-    FROM PK_Stats
-    WHERE total_versions > 1
-),
-UnpivotedResults AS (
-    SELECT 'visit_date' AS column_name, vol_score_visit_date AS volatility_score FROM ColumnVolatility
-    UNION ALL
-    SELECT 'diagnosis_code' AS column_name, vol_score_diagnosis_code AS volatility_score FROM ColumnVolatility
-    -- ... more columns ...
-)
-SELECT 
-    column_name,
-    volatility_score,
-    CASE 
-        WHEN volatility_score <= 0.01 THEN '🟩 Stable (Almost no change)'
-        WHEN volatility_score < 0.80  THEN '🟨 Volatile (Changes often)'
-        ELSE '🟥 Dynamic (Changes always)'
-    END AS volatility_category
-FROM UnpivotedResults
-ORDER BY volatility_score DESC;
-```
+**Generated Logic (Summary):**
+The tool generates a CTE-based query that:
+1. Groups records by the detected Primary Key (`patient_PK`).
+2. Counts distinct values for all other columns.
+3. Calculates the average volatility score.
+4. Unpivots the results and categorizes them by severity.
+
+---
+
+<footer>
+Column Volatility Analyzer · Boehringer Ingelheim Data Engineering
+</footer>
