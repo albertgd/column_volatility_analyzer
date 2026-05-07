@@ -98,7 +98,7 @@ The tool generates a CTE-based query that:
 
 ## Support
 
-column_volatility_analyzer is free and open source. Contributing code, reporting bugs, or sharing it with others is all I ask.
+column_volatility_analyzer is free and open source. All I ask is that you contribute code, report bugs, or share it with others.
 
 If it saves you time and you'd like to support more free apps like this one, buying me a coffee helps a lot:
 
